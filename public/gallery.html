@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Bank</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-50">
+  <div class="max-w-7xl mx-auto p-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+      <h1 class="text-3xl font-semibold">Image Bank</h1>
+      <input id="search" placeholder="Search filename..."
+        class="w-full sm:w-80 rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring"
+      />
+    </div>
+
+    <div id="status" class="text-gray-500 mb-4">Loading…</div>
+
+    <div id="grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"
+       class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-black text-white px-4 py-2 rounded-lg shadow">
+    <span id="toastText"></span>
+    <button id="toastClose" class="ml-3 opacity-70 hover:opacity-100">✕</button>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 hidden z-50 bg-black/70 p-4">
+    <div class="h-full w-full flex items-center justify-center">
+      <div class="relative max-w-5xl w-full" id="modalInner">
+        <img id="modalImg" class="w-full h-auto rounded-xl shadow-lg" />
+        <div class="absolute top-3 right-3 flex gap-2">
+          <button id="modalCopy" class="bg-white/90 px-3 py-1 rounded-lg">Copy</button>
+          <a id="modalOpen" class="bg-white/90 px-3 py-1 rounded-lg" target="_blank" rel="noopener">Open</a>
+          <button id="modalClose" class="bg-white/90 px-3 py-1 rounded-lg">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const gridEl = document.getElementById("grid");
+    const searchEl = document.getElementById("search");
+
+    const toastEl = document.getElementById("toast");
+    const toastTextEl = document.getElementById("toastText");
+    const toastCloseEl = document.getElementById("toastClose");
+
+    const modalEl = document.getElementById("modal");
+    const modalImgEl = document.getElementById("modalImg");
+    const modalCloseEl = document.getElementById("modalClose");
+    const modalCopyEl = document.getElementById("modalCopy");
+    const modalOpenEl = document.getElementById("modalOpen");
+    const modalInnerEl = document.getElementById("modalInner");
+
+    let allImages = [];
+    let currentModalSrc = null;
+
+    function showToast(text) {
+      toastTextEl.textContent = text;
+      toastEl.classList.remove("hidden");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toastEl.classList.add("hidden"), 2500);
+    }
+    toastCloseEl.addEventListener("click", () => toastEl.classList.add("hidden"));
+
+    function filenameFromUrl(url) {
+      return decodeURIComponent(url.split("/").pop() || url);
+    }
+
+    async function copyImage(src) {
+      try {
+        const res = await fetch(src);
+        const blob = await res.blob();
+
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+          showToast("Image copied to clipboard!");
+          return;
+        }
+
+        // fallback: copy URL
+        await navigator.clipboard.writeText(location.origin + src);
+        showToast("Copied image URL (fallback).");
+      } catch (e) {
+        console.error(e);
+        try {
+          await navigator.clipboard.writeText(location.origin + src);
+          showToast("Copied image URL (fallback).");
+        } catch {
+          showToast("Copy failed in this browser.");
+        }
+      }
+    }
+
+    function openModal(src) {
+      currentModalSrc = src;
+      modalImgEl.src = src;
+      modalOpenEl.href = src;
+      modalEl.classList.remove("hidden");
+      document.body.classList.add("overflow-hidden");
+    }
+    function closeModal() {
+      modalEl.classList.add("hidden");
+      document.body.classList.remove("overflow-hidden");
+      currentModalSrc = null;
+    }
+
+    modalCloseEl.addEventListener("click", closeModal);
+    modalEl.addEventListener("click", (e) => {
+      if (!modalInnerEl.contains(e.target)) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeModal();
+    });
+
+    modalCopyEl.addEventListener("click", () => {
+      if (currentModalSrc) copyImage(currentModalSrc);
+    });
+
+    function render(images) {
+      gridEl.innerHTML = "";
+      for (const src of images) {
+        const name = filenameFromUrl(src);
+
+        const card = document.createElement("div");
+        card.className = "relative overflow-hidden rounded-xl bg-white shadow-sm border";
+
+        // image button (zoom on hover)
+        const imgBtn = document.createElement("button");
+        imgBtn.className = "block w-full";
+        imgBtn.title = "Click to zoom";
+        imgBtn.addEventListener("click", () => openModal(src));
+
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = name;
+        img.loading = "lazy";
+        img.className = "w-full h-40 object-cover transform transition duration-300 hover:scale-110";
+        imgBtn.appendChild(img);
+
+        // copy button
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "absolute top-2 right-2 bg-white/85 backdrop-blur px-2 py-1 rounded-lg shadow hover:bg-white text-sm";
+        copyBtn.textContent = "Copy";
+        copyBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          copyImage(src);
+        });
+
+        const label = document.createElement("div");
+        label.className = "p-2 text-xs text-gray-600 break-all";
+        label.textContent = src.replace("/images/", "");
+
+        card.appendChild(imgBtn);
+        card.appendChild(copyBtn);
+        card.appendChild(label);
+        gridEl.appendChild(card);
+      }
+    }
+
+    function applySearch() {
+      const q = (searchEl.value || "").toLowerCase().trim();
+      const filtered = q
+        ? allImages.filter((x) => x.toLowerCase().includes(q))
+        : allImages;
+
+      statusEl.textContent = `${filtered.length} image(s)`;
+      render(filtered);
+    }
+
+    searchEl.addEventListener("input", applySearch);
+
+    (async function init() {
+      try {
+        const res = await fetch("api/images");
+
+        allImages = await res.json();
+
+        if (!Array.isArray(allImages) || allImages.length === 0) {
+          statusEl.textContent = "No images found in /public/images";
+          return;
+        }
+
+        statusEl.textContent = `${allImages.length} image(s)`;
+        render(allImages);
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "Failed to load images.";
+      }
+    })();
+  </script>
+</body>
+</html>
