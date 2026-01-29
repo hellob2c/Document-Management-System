@@ -1,18 +1,19 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Image Bank</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="min-h-screen bg-gray-50">
   <div class="max-w-7xl mx-auto p-6">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
       <h1 class="text-3xl font-semibold">Image Bank</h1>
       <input id="search" placeholder="Search filename..."
-        class="w-full sm:w-80 rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring"
-      />
+        class="w-full sm:w-80 rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring" />
     </div>
 
     <div id="status" class="text-gray-500 mb-4">Loading…</div>
@@ -22,21 +23,79 @@
 
   <!-- Toast -->
   <div id="toast"
-       class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-black text-white px-4 py-2 rounded-lg shadow">
+    class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden bg-black text-white px-4 py-2 rounded-lg shadow">
     <span id="toastText"></span>
     <button id="toastClose" class="ml-3 opacity-70 hover:opacity-100">✕</button>
   </div>
 
-  <!-- Modal -->
-  <div id="modal" class="fixed inset-0 hidden z-50 bg-black/70 p-4">
-    <div class="h-full w-full flex items-center justify-center">
-      <div class="relative max-w-5xl w-full" id="modalInner">
-        <img id="modalImg" class="w-full h-auto rounded-xl shadow-lg" />
-        <div class="absolute top-3 right-3 flex gap-2">
-          <button id="modalCopy" class="bg-white/90 px-3 py-1 rounded-lg">Copy</button>
-          <a id="modalOpen" class="bg-white/90 px-3 py-1 rounded-lg" target="_blank" rel="noopener">Open</a>
-          <button id="modalClose" class="bg-white/90 px-3 py-1 rounded-lg">Close</button>
+  <!-- Modal (Professional Viewer) -->
+  <div id="modal" class="fixed inset-0 hidden z-50">
+    <!-- Backdrop -->
+    <div id="modalBackdrop" class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+
+    <!-- Dialog -->
+    <div class="relative h-full w-full flex items-center justify-center p-4">
+      <div id="modalInner"
+        class="relative w-full max-w-6xl rounded-2xl bg-white shadow-2xl overflow-hidden"
+        role="dialog" aria-modal="true" aria-label="Image preview">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-b bg-white">
+          <div class="min-w-0">
+            <div id="modalTitle" class="text-sm sm:text-base font-semibold truncate">Image</div>
+            <div id="modalMeta" class="text-xs text-gray-500 truncate"></div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="modalCopy"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">
+              Copy
+            </button>
+
+            <a id="modalOpen"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+              target="_blank" rel="noopener">
+              Open
+            </a>
+
+            <button id="modalClose"
+              class="inline-flex items-center gap-2 rounded-lg bg-gray-900 text-white px-3 py-1.5 text-sm hover:bg-black">
+              Close
+            </button>
+          </div>
         </div>
+
+        <!-- Body -->
+        <div class="relative bg-gray-50">
+          <!-- Prev / Next buttons -->
+          <button id="modalPrev"
+            class="absolute left-3 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/90 shadow px-3 py-2 hover:bg-white">
+            ◀
+          </button>
+
+          <button id="modalNext"
+            class="absolute right-3 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/90 shadow px-3 py-2 hover:bg-white">
+            ▶
+          </button>
+
+          <!-- Image area -->
+          <div class="p-4 sm:p-6 flex items-center justify-center overflow-auto">
+            <img id="modalImg"
+              class="max-h-[75vh] w-auto max-w-full mx-auto rounded-xl shadow-lg object-contain bg-white"
+              alt="preview" />
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 py-3 border-t bg-white flex items-center justify-between text-xs text-gray-500">
+          <div>
+            <span id="modalIndex">1</span> / <span id="modalTotal">1</span>
+          </div>
+          <div class="hidden sm:block">
+            Tips: ← → to navigate, Esc to close
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -51,13 +110,24 @@
     const toastCloseEl = document.getElementById("toastClose");
 
     const modalEl = document.getElementById("modal");
+    const modalBackdropEl = document.getElementById("modalBackdrop");
+    const modalInnerEl = document.getElementById("modalInner");
+
     const modalImgEl = document.getElementById("modalImg");
     const modalCloseEl = document.getElementById("modalClose");
     const modalCopyEl = document.getElementById("modalCopy");
     const modalOpenEl = document.getElementById("modalOpen");
-    const modalInnerEl = document.getElementById("modalInner");
+
+    const modalTitleEl = document.getElementById("modalTitle");
+    const modalMetaEl = document.getElementById("modalMeta");
+    const modalPrevEl = document.getElementById("modalPrev");
+    const modalNextEl = document.getElementById("modalNext");
+    const modalIndexEl = document.getElementById("modalIndex");
+    const modalTotalEl = document.getElementById("modalTotal");
 
     let allImages = [];
+    let currentList = [];
+    let currentIndex = -1;
     let currentModalSrc = null;
 
     function showToast(text) {
@@ -68,8 +138,8 @@
     }
     toastCloseEl.addEventListener("click", () => toastEl.classList.add("hidden"));
 
-    function filenameFromUrl(url) {
-      return decodeURIComponent(url.split("/").pop() || url);
+    function filenameFromUrl(u) {
+      return decodeURIComponent((u || "").split("/").pop() || u);
     }
 
     async function copyImage(src) {
@@ -83,7 +153,6 @@
           return;
         }
 
-        // fallback: copy URL
         await navigator.clipboard.writeText(location.origin + src);
         showToast("Copied image URL (fallback).");
       } catch (e) {
@@ -97,40 +166,87 @@
       }
     }
 
-    function openModal(src) {
+    function setModalByIndex(idx) {
+      if (!currentList.length) return;
+
+      // wrap-around
+      if (idx < 0) idx = currentList.length - 1;
+      if (idx >= currentList.length) idx = 0;
+
+      currentIndex = idx;
+      const src = currentList[currentIndex];
       currentModalSrc = src;
+
       modalImgEl.src = src;
       modalOpenEl.href = src;
+
+      const name = filenameFromUrl(src);
+      modalTitleEl.textContent = name;
+      modalMetaEl.textContent = src.replace("./images/", "");
+
+      modalIndexEl.textContent = String(currentIndex + 1);
+      modalTotalEl.textContent = String(currentList.length);
+
+      const one = currentList.length === 1;
+      modalPrevEl.style.opacity = one ? "0.4" : "1";
+      modalNextEl.style.opacity = one ? "0.4" : "1";
+    }
+
+    function openModal(src) {
+      const idx = currentList.indexOf(src);
+      setModalByIndex(idx >= 0 ? idx : 0);
       modalEl.classList.remove("hidden");
       document.body.classList.add("overflow-hidden");
     }
+
     function closeModal() {
       modalEl.classList.add("hidden");
       document.body.classList.remove("overflow-hidden");
       currentModalSrc = null;
+      currentIndex = -1;
     }
 
-    modalCloseEl.addEventListener("click", closeModal);
-    modalEl.addEventListener("click", (e) => {
-      if (!modalInnerEl.contains(e.target)) closeModal();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeModal();
+    // Modal controls
+    modalPrevEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setModalByIndex(currentIndex - 1);
     });
 
-    modalCopyEl.addEventListener("click", () => {
+    modalNextEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setModalByIndex(currentIndex + 1);
+    });
+
+    modalCloseEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeModal();
+    });
+
+    modalBackdropEl.addEventListener("click", closeModal);
+
+    modalCopyEl.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (currentModalSrc) copyImage(currentModalSrc);
     });
 
+    document.addEventListener("keydown", (e) => {
+      if (modalEl.classList.contains("hidden")) return;
+
+      if (e.key === "Escape") closeModal();
+      if (e.key === "ArrowLeft") setModalByIndex(currentIndex - 1);
+      if (e.key === "ArrowRight") setModalByIndex(currentIndex + 1);
+    });
+
     function render(images) {
+      currentList = images.slice(); // IMPORTANT for next/prev
       gridEl.innerHTML = "";
+
       for (const src of images) {
         const name = filenameFromUrl(src);
 
         const card = document.createElement("div");
         card.className = "relative overflow-hidden rounded-xl bg-white shadow-sm border";
 
-        // image button (zoom on hover)
         const imgBtn = document.createElement("button");
         imgBtn.className = "block w-full";
         imgBtn.title = "Click to zoom";
@@ -143,7 +259,6 @@
         img.className = "w-full h-40 object-cover transform transition duration-300 hover:scale-110";
         imgBtn.appendChild(img);
 
-        // copy button
         const copyBtn = document.createElement("button");
         copyBtn.className = "absolute top-2 right-2 bg-white/85 backdrop-blur px-2 py-1 rounded-lg shadow hover:bg-white text-sm";
         copyBtn.textContent = "Copy";
@@ -154,7 +269,7 @@
 
         const label = document.createElement("div");
         label.className = "p-2 text-xs text-gray-600 break-all";
-        label.textContent = src.replace("/images/", "");
+        label.textContent = src.replace("./images/", "");
 
         card.appendChild(imgBtn);
         card.appendChild(copyBtn);
@@ -177,17 +292,12 @@
 
     (async function init() {
       try {
-        // const res = await fetch("api/images");///
-
-const res = await fetch("./images.json");
-const relList = await res.json();
-allImages = relList.map(p => "./images/" + p);
-
-
-        // allImages = await res.json();
+        const res = await fetch("./images.json");
+        const relList = await res.json();
+        allImages = relList.map(p => "./images/" + String(p).replace(/^\.?\//, ""));
 
         if (!Array.isArray(allImages) || allImages.length === 0) {
-          statusEl.textContent = "No images found in /public/images";
+          statusEl.textContent = "No images found.";
           return;
         }
 
@@ -200,4 +310,5 @@ allImages = relList.map(p => "./images/" + p);
     })();
   </script>
 </body>
+
 </html>
