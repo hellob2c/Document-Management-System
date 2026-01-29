@@ -177,9 +177,14 @@
 
     (async function init() {
       try {
-        const res = await fetch("api/images");
+        // const res = await fetch("api/images");///
 
-        allImages = await res.json();
+const res = await fetch("./images.json");
+const relList = await res.json();
+allImages = relList.map(p => "./images/" + p);
+
+
+        // allImages = await res.json();
 
         if (!Array.isArray(allImages) || allImages.length === 0) {
           statusEl.textContent = "No images found in /public/images";
